@@ -47,6 +47,7 @@
 
 // C++ libs
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <list>
@@ -852,6 +853,11 @@ protected:
   std::list<float *> ray_list; ///< List of rays traced for debug visualization
   usec_t sim_time; ///< the current sim time in this world in microseconds
   std::map<point_int_t, SuperRegion *> superregions;
+  std::chrono::time_point<std::chrono::steady_clock> next_run_time;
+  usec_t real_time_between_runs;
+  /** Stage attempts to run this many times faster than real
+  time. If -1, Stage runs as fast as possible. */
+  double speedup;
 
   uint64_t updates; ///< the number of simulated time steps executed so far
   Worldfile *wf; ///< If set, points to the worldfile used to create this world
@@ -859,6 +865,7 @@ protected:
   void CallUpdateCallbacks(); ///< Call all calbacks in cb_list, removing any that return true;
 
 public:
+  std::chrono::time_point<std::chrono::steady_clock> NextRunTime() { return next_run_time; }
   uint64_t UpdateCount() { return updates; }
   bool paused; ///< if true, the simulation is stopped
 
@@ -1032,6 +1039,7 @@ updates */
 public:
   /** returns true when time to quit, false otherwise */
   static bool UpdateAll();
+  static bool UpdateAll(std::chrono::time_point<std::chrono::steady_clock> &next_run);
 
   /** run all worlds.
  *  If only non-gui worlds were created, UpdateAll() is
@@ -1429,10 +1437,6 @@ private:
   std::vector<Option *> drawOptions;
   FileManager *fileMan; ///< Used to load and save worldfiles
   std::vector<usec_t> interval_log;
-
-  /** Stage attempts to run this many times faster than real
-time. If -1, Stage runs as fast as possible. */
-  double speedup;
 
   bool confirm_on_quit; ///< if true, show save dialog on (GUI) exit (default)
 

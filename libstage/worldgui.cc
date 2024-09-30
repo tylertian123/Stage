@@ -194,11 +194,13 @@ static const char *MoreHelpText =
 
 WorldGui::WorldGui(int width, int height, const char *caption)
     : Fl_Window(width, height, NULL), canvas(new Canvas(this, 0, 30, width, height - 30)),
-      drawOptions(), fileMan(new FileManager()), interval_log(), speedup(1.0), // real time
+      drawOptions(), fileMan(new FileManager()), interval_log(),
       confirm_on_quit(true), mbar(new Fl_Menu_Bar(0, 0, width, 30)), oDlg(NULL), pause_time(false),
       real_time_interval(sim_interval), real_time_now(RealTimeNow()),
       real_time_recorded(real_time_now), timing_interval(20)
 {
+  speedup = 1.0; // default in GUI mode is realtime
+
   Fl::lock(); // start FLTK's thread safe behaviour
 
   Fl::scheme("");
@@ -301,7 +303,6 @@ void WorldGui::LoadWorldGuiPostHook(usec_t load_start_time)
 {
   // worldgui exclusive properties live in the top-level section
   const int world_section = 0;
-  speedup = wf->ReadFloat(world_section, "speedup", speedup);
   paused = wf->ReadInt(world_section, "paused", paused);
   confirm_on_quit = wf->ReadInt(world_section, "confirm_on_quit", confirm_on_quit);
 

@@ -88,6 +88,8 @@ using std::abs;
 
 #include <cstdlib>
 
+#include <chrono>
+#include <thread>
 #include <stdlib.h>
 #include <assert.h>
 #include <libgen.h> // for dirname(3)
@@ -138,7 +140,9 @@ World::World(const std::string &,
 
       // protected
       cb_list(), extent(), graphics(false), option_table(), powerpack_list(), quit_time(0),
-      ray_list(), sim_time(0), superregions(), updates(0), wf(NULL), paused(false),
+      ray_list(), sim_time(0), superregions(), next_run_time(std::chrono::time_point<std::chrono::steady_clock>::min()),
+      real_time_between_runs(0), speedup(-1.0), // default as fast as possible
+      updates(0), wf(NULL), paused(false),
       event_queues(1), // use 1 thread by default
       pending_update_callbacks(), active_energy(), active_velocity(),
       sim_interval(1e5), // 100 msec has proved a good default
@@ -208,8 +212,10 @@ void World::Run()
       Fl::wait();
     }
   } else {
-    while (!UpdateAll())
-      ;
+    std::chrono::time_point<std::chrono::steady_clock> next_run;
+    while (!UpdateAll(next_run)) {
+      std::this_thread::sleep_until(next_run);
+    }
   }
 }
 
@@ -220,6 +226,21 @@ bool World::UpdateAll()
   FOR_EACH (world_it, World::world_set) {
     if ((*world_it)->Update() == false)
       quit = false;
+  }
+
+  return quit;
+}
+
+bool World::UpdateAll(std::chrono::time_point<std::chrono::steady_clock> &next_run)
+{
+  bool quit(true);
+
+  next_run = std::chrono::time_point<std::chrono::steady_clock>::max();
+  FOR_EACH (world_it, World::world_set) {
+    if ((*world_it)->Update() == false) {
+      quit = false;
+      next_run = std::min(next_run, (*world_it)->NextRunTime());
+    }
   }
 
   return quit;
@@ -411,6 +432,9 @@ void World::LoadWorldPostHook()
 
   // read msec instead of usec: easier for user
   this->sim_interval = 1e3 * wf->ReadFloat(0, "interval_sim", this->sim_interval / 1e3);
+
+  this->speedup = wf->ReadFloat(0, "speedup", this->speedup);
+  this->real_time_between_runs = this->speedup > 0 ? this->sim_interval / this->speedup : 0;
 
   this->worker_threads = wf->ReadInt(0, "threads", this->worker_threads);
   if (this->worker_threads < 1) {
@@ -611,6 +635,14 @@ bool World::Update()
   // if we've run long enough, exit
   if (PastQuitTime() || World::quit_all || this->quit)
     return true;
+
+  if (real_time_between_runs > 0) {
+    if (std::chrono::steady_clock::now() < next_run_time)
+      return false;
+    next_run_time += std::chrono::microseconds(real_time_between_runs);
+    if (next_run_time < std::chrono::steady_clock::now())
+      next_run_time = std::chrono::steady_clock::now() + std::chrono::microseconds(real_time_between_runs);
+  }
 
   if (show_clock && ((this->updates % show_clock_interval) == 0)) {
     printf("\r[Stage: %s]", ClockString().c_str());
